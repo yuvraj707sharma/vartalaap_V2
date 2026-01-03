@@ -326,7 +326,16 @@ POST /api/v1/check-grammar
 - Advanced analytics
 - Priority support
 
-## 🛠️ Tech Stack
+## 📚 Documentation
+
+- **[API Documentation](API.md)** - Complete REST and WebSocket API reference
+- **[Testing Guide](TESTING.md)** - Instructions for testing the platform
+- **[Contributing Guidelines](CONTRIBUTING.md)** - How to contribute to the project
+- **[Changelog](CHANGELOG.md)** - Version history and changes
+- **[Database Schema](supabase/migrations/001_schema.sql)** - PostgreSQL schema
+- **[License](LICENSE)** - MIT License
+
+## 🔧 Tech Stack
 
 ### Backend
 - **Language**: Go 1.21
