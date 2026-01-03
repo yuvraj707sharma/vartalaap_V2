@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { VoiceOrb } from '@/components/VoiceOrb';
 import { TranscriptDisplay } from '@/components/TranscriptDisplay';
 import { ErrorCorrectionDisplay } from '@/components/ErrorCorrection';
@@ -8,10 +9,17 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { useVoice } from '@/hooks/useVoice';
-import { Mode, Language } from '@/types';
+import { Mode, Language, Domain } from '@/types';
 
-export default function PracticePage() {
-  const [mode, setMode] = useState<Mode>('english_practice');
+function PracticeContent() {
+  const searchParams = useSearchParams();
+  
+  // Get mode and domain from URL parameters
+  const urlMode = searchParams.get('mode') as Mode | null;
+  const urlDomain = searchParams.get('domain') as Domain | null;
+  
+  const [mode, setMode] = useState<Mode>(urlMode || 'english_practice');
+  const [domain, setDomain] = useState<Domain | undefined>(urlDomain || undefined);
   const [nativeLanguage, setNativeLanguage] = useState<Language>('Hindi');
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [sessionTime, setSessionTime] = useState(0);
@@ -34,6 +42,7 @@ export default function PracticePage() {
     // Start WebSocket session
     startSession({
       mode,
+      domain,
       nativeLanguage,
       targetLanguage: 'en',
     });
@@ -65,9 +74,14 @@ export default function PracticePage() {
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold bg-gradient-to-r from-cyan-400 to-teal-400 bg-clip-text text-transparent mb-2">
-            Vartalaap AI 2.0
+            {mode === 'interview' && domain ? `${domain.toUpperCase()} Interview Practice` : 'Vartalaap AI 2.0'}
           </h1>
-          <p className="text-slate-400">Real-time English Learning with Live Corrections</p>
+          <p className="text-slate-400">
+            {mode === 'interview' 
+              ? 'Domain-specific mock interview with real-time corrections'
+              : 'Real-time English Learning with Live Corrections'
+            }
+          </p>
         </div>
 
         {/* Mode Selection */}
@@ -209,5 +223,21 @@ export default function PracticePage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function PracticePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-950 text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-4xl font-bold bg-gradient-to-r from-cyan-400 to-teal-400 bg-clip-text text-transparent mb-4">
+            Loading...
+          </div>
+        </div>
+      </div>
+    }>
+      <PracticeContent />
+    </Suspense>
   );
 }
