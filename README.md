@@ -96,6 +96,8 @@ vartalaap_V2/
 
 ## 🚀 Quick Start
 
+**New to the project?** Check out our **[Quick Start Guide](QUICKSTART.md)** to get up and running in 5 minutes!
+
 ### Prerequisites
 
 - Go 1.21+
