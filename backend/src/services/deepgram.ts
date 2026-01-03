@@ -22,7 +22,7 @@ export class DeepgramService {
       console.log('Deepgram connection opened');
     });
 
-    connection.on(LiveTranscriptionEvents.Transcript, (data) => {
+    connection.on(LiveTranscriptionEvents.Transcript, (data: any) => {
       const transcript = data.channel?.alternatives?.[0]?.transcript;
       const isFinal = data.is_final;
       
@@ -31,7 +31,7 @@ export class DeepgramService {
       }
     });
 
-    connection.on(LiveTranscriptionEvents.Error, (error) => {
+    connection.on(LiveTranscriptionEvents.Error, (error: any) => {
       console.error('Deepgram error:', error);
       onError(error);
     });

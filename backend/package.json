@@ -13,7 +13,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@deepgram/sdk": "github:deepgram/deepgram-js-sdk",
+    "@deepgram/sdk": "^4.11.3",
     "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.89.0",
     "@types/uuid": "^10.0.0",
