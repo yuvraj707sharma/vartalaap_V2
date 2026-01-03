@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 
@@ -52,27 +51,22 @@ func main() {
 		})
 	})
 
-	// WebSocket upgrade middleware
-	app.Use("/ws", func(c *fiber.Ctx) error {
+	// WebSocket upgrade middleware for /ws/practice
+	app.Use("/ws/practice", func(c *fiber.Ctx) error {
 		if fiberws.IsWebSocketUpgrade(c) {
 			return c.Next()
 		}
 		return fiber.ErrUpgradeRequired
 	})
 
-	// WebSocket endpoint
-	app.Get("/ws", fiberws.New(func(c *fiberws.Conn) {
-		// This won't be called with our custom handler
-		// We use the gorilla websocket handler directly
+	// WebSocket endpoint - convert fiber websocket to gorilla websocket compatible
+	app.Get("/ws/practice", fiberws.New(func(c *fiberws.Conn) {
+		userID := c.Query("user_id", "anonymous")
+		nativeLanguage := c.Query("native_language", "Hindi")
+		
+		// Wrap the fiber websocket connection with our handler
+		wsHandler.ServeFiberWs(c, userID, nativeLanguage)
 	}))
-
-	// We need to use native http handler for gorilla websocket
-	// Override the /ws route with native handler
-	app.Get("/ws/practice", func(c *fiber.Ctx) error {
-		// Upgrade to WebSocket using gorilla
-		wsHandler.ServeWs(c.Context().Response().BodyWriter().(http.ResponseWriter), c.Context().Request())
-		return nil
-	})
 
 	// API routes
 	api := app.Group("/api/v1")
@@ -142,6 +136,3 @@ func main() {
 	log.Printf("🚀 Vartalaap AI 2.0 server starting on port %s", port)
 	log.Fatal(app.Listen(":" + port))
 }
-
-// Need to import http for the native http.ResponseWriter
-import "net/http"

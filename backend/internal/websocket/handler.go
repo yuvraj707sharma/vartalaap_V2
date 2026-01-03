@@ -2,21 +2,10 @@ package websocket
 
 import (
 	"log"
-	"net/http"
 
-	"github.com/gorilla/websocket"
+	fiberws "github.com/gofiber/websocket/v2"
 	"github.com/yuvraj707sharma/vartalaap_V2/backend/internal/services"
 )
-
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		// Allow all origins for development
-		// In production, restrict to your frontend domain
-		return true
-	},
-}
 
 // Handler handles WebSocket connections
 type Handler struct {
@@ -34,27 +23,10 @@ func NewHandler(hub *Hub, grammarDetector *services.GrammarDetector, deepgramSer
 	}
 }
 
-// ServeWs handles WebSocket requests from clients
-func (h *Handler) ServeWs(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Printf("WebSocket upgrade error: %v", err)
-		return
-	}
-
-	// Get user info from query params
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = "anonymous"
-	}
-
-	nativeLanguage := r.URL.Query().Get("native_language")
-	if nativeLanguage == "" {
-		nativeLanguage = "Hindi"
-	}
-
-	// Create new client
-	client := NewClient(h.hub, conn, userID, nativeLanguage, h.grammarDetector, h.deepgramService)
+// ServeFiberWs handles Fiber WebSocket connections
+func (h *Handler) ServeFiberWs(conn *fiberws.Conn, userID string, nativeLanguage string) {
+	// Create new client with Fiber WebSocket connection
+	client := NewFiberClient(h.hub, conn, userID, nativeLanguage, h.grammarDetector, h.deepgramService)
 	client.hub.register <- client
 
 	// Start client goroutines

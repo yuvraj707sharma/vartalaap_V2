@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/gorilla/websocket"
+	fiberws "github.com/gofiber/websocket/v2"
 	"github.com/yuvraj707sharma/vartalaap_V2/backend/internal/services"
 )
 
@@ -28,8 +28,8 @@ const (
 type Client struct {
 	hub *Hub
 
-	// WebSocket connection
-	conn *websocket.Conn
+	// WebSocket connection (Fiber)
+	conn *fiberws.Conn
 
 	// Buffered channel of outbound messages
 	send chan []byte
@@ -54,8 +54,8 @@ type Message struct {
 	Payload map[string]interface{} `json:"payload"`
 }
 
-// NewClient creates a new Client instance
-func NewClient(hub *Hub, conn *websocket.Conn, userID string, nativeLanguage string, grammarDetector *services.GrammarDetector, deepgramService *services.DeepgramService) *Client {
+// NewFiberClient creates a new Client instance with Fiber WebSocket
+func NewFiberClient(hub *Hub, conn *fiberws.Conn, userID string, nativeLanguage string, grammarDetector *services.GrammarDetector, deepgramService *services.DeepgramService) *Client {
 	return &Client{
 		hub:             hub,
 		conn:            conn,
@@ -76,7 +76,6 @@ func (c *Client) ReadPump() {
 	}()
 
 	c.conn.SetReadDeadline(time.Now().Add(pongWait))
-	c.conn.SetReadLimit(maxMessageSize)
 	c.conn.SetPongHandler(func(string) error {
 		c.conn.SetReadDeadline(time.Now().Add(pongWait))
 		return nil
@@ -85,9 +84,7 @@ func (c *Client) ReadPump() {
 	for {
 		_, messageData, err := c.conn.ReadMessage()
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("WebSocket error: %v", err)
-			}
+			log.Printf("WebSocket read error: %v", err)
 			break
 		}
 
@@ -109,30 +106,17 @@ func (c *Client) WritePump() {
 		case message, ok := <-c.send:
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
-				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				c.conn.WriteMessage(fiberws.CloseMessage, []byte{})
 				return
 			}
 
-			w, err := c.conn.NextWriter(websocket.TextMessage)
-			if err != nil {
-				return
-			}
-			w.Write(message)
-
-			// Add queued messages to the current WebSocket message
-			n := len(c.send)
-			for i := 0; i < n; i++ {
-				w.Write([]byte{'\n'})
-				w.Write(<-c.send)
-			}
-
-			if err := w.Close(); err != nil {
+			if err := c.conn.WriteMessage(fiberws.TextMessage, message); err != nil {
 				return
 			}
 
 		case <-ticker.C:
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+			if err := c.conn.WriteMessage(fiberws.PingMessage, nil); err != nil {
 				return
 			}
 		}
