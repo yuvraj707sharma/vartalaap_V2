@@ -14,32 +14,105 @@ Vartalaap AI 2.0 is a real-time voice-based English learning platform that inter
 ### Key Features
 
 - ⚡ **Ultra-Fast Interruption**: < 300ms latency for grammar corrections
+- 🎯 **Real-Time Chunk Analysis**: Detects errors as you speak, not after
+- 🎤 **Interim Transcript Support**: Processes speech in real-time chunks
 - 🌏 **Multi-Language Support**: Explanations in 9 Indian languages
 - 🎤 **Real-Time STT/TTS**: Powered by Deepgram
 - 🤖 **AI-Powered**: LLM fallback with Groq → OpenAI → Gemini
 - 📊 **50+ Grammar Rules**: Comprehensive rule-based detection
-- 🎯 **Interview Modes**: Tech, Finance, UPSC, SSC, NDA, CDS, MBA
+- 🎯 **Interview Modes**: 7 specialized personas (Tech, NDA, SSB, HR, MBA, UPSC, General)
+- 🎭 **Strict Interviewer AI**: Simulates real interview pressure
+- ⏸️ **Thinking-Pause Awareness**: Distinguishes thinking vs done speaking
 - 💎 **Freemium Model**: 30 min/day free, ₹99/month premium
 
 ## 🏗️ Architecture
 
+### Current Architecture (v2.0 - Real-Time Streaming)
+
 ```
-┌─────────────┐         WebSocket          ┌──────────────┐
-│   Next.js   │ ←────────────────────────→ │  Go Backend  │
-│  Frontend   │    (Ultra-low latency)     │   (Fiber)    │
-└─────────────┘                            └──────────────┘
-      │                                            │
-      │                                            ├─→ Deepgram STT/TTS
-      │                                            ├─→ Grammar Detector
-      │                                            │    (Rule-based ~5ms)
-      │                                            └─→ LLM Router
-      │                                                 (Groq/OpenAI/Gemini)
-      ↓
-┌─────────────┐
-│  Supabase   │
-│ PostgreSQL  │
-└─────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                         Browser (User)                              │
+│  ┌──────────────┐         ┌────────────────┐                       │
+│  │ Web Speech   │         │ MediaRecorder  │                       │
+│  │ Recognition  │         │ (Raw Audio)    │                       │
+│  └──────┬───────┘         └────────┬───────┘                       │
+│         │                          │                                │
+│         └──────────────┬───────────┘                                │
+│                        │ WebSocket (Interim + Final Chunks)         │
+└────────────────────────┼────────────────────────────────────────────┘
+                         │
+                         ↓
+┌────────────────────────────────────────────────────────────────────┐
+│                    Go Backend (Fiber + WebSocket)                  │
+│                                                                     │
+│  ┌─────────────────────────────────────────────────────────────┐  │
+│  │                  WebSocket Handler                          │  │
+│  │  • /ws/practice (Enhanced with chunk analysis)              │  │
+│  │  • /ws/realtime (OpenAI Realtime API relay - Future)        │  │
+│  └────────────┬────────────────────────────────────────────────┘  │
+│               │                                                     │
+│               ├──→ Chunk Analyzer (Real-time)                      │
+│               │    • Sliding window buffer (last 10 words)         │
+│               │    • Interim + Final transcript processing         │
+│               │    • Detects errors as user speaks (~5ms)          │
+│               │                                                     │
+│               ├──→ Grammar Detector (50+ Rules)                    │
+│               │    • Ultra-fast regex-based detection              │
+│               │    • LLM fallback for complex cases                │
+│               │    • Native language explanations                  │
+│               │                                                     │
+│               ├──→ Interviewer Service                             │
+│               │    • 7 interview personas (NDA, SSB, Tech, etc.)   │
+│               │    • Strictness levels & patience thresholds       │
+│               │    • Context-aware nudging                         │
+│               │                                                     │
+│               ├──→ OpenAI Realtime Service (Future)                │
+│               │    • Direct audio-in/audio-out streaming           │
+│               │    • Server-side VAD                                │
+│               │    • Barge-in capability                            │
+│               │                                                     │
+│               └──→ Deepgram STT/TTS                                │
+│                    • Audio transcription                            │
+│                    • Voice corrections in native language          │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+                         │
+                         ↓
+┌────────────────────────────────────────────────────────────────────┐
+│                    External Services                               │
+│                                                                     │
+│  • LLM Router: Groq → OpenAI → Gemini (Fallback Chain)            │
+│  • Supabase: PostgreSQL (User data, sessions, analytics)          │
+│                                                                     │
+└────────────────────────────────────────────────────────────────────┘
 ```
+
+### Key Features of New Architecture
+
+1. **Real-Time Chunk Analysis** 
+   - Processes speech in real-time as the user speaks
+   - Sliding window buffer for contextual error detection
+   - Detects errors mid-sentence, not just at the end
+
+2. **Dual Transcript Processing**
+   - Interim transcripts: Real-time grammar checking
+   - Final transcripts: Comprehensive analysis
+   - Avoids the "half-audio" problem mentioned in requirements
+
+3. **Interview Persona System**
+   - 7 pre-configured interview modes with unique behaviors
+   - Adjustable strictness and patience levels
+   - Native language support for corrections
+
+4. **Ultra-Low Latency**
+   - Rule-based detection: ~5ms per check
+   - Parallel processing of audio and grammar analysis
+   - Target: < 300ms end-to-end interruption latency
+
+5. **Backward Compatible**
+   - Existing `/ws/practice` endpoint enhanced with new features
+   - Original grammar rules preserved and improved
+   - Supports both old and new client implementations
 
 ## 📁 Project Structure
 
@@ -253,6 +326,7 @@ Choose from 9 supported languages:
 
 ### WebSocket
 
+#### Enhanced Practice Endpoint (Backward Compatible)
 ```
 ws://localhost:8080/ws/practice?user_id=USER_ID&native_language=LANGUAGE
 ```
@@ -260,20 +334,34 @@ ws://localhost:8080/ws/practice?user_id=USER_ID&native_language=LANGUAGE
 #### Message Types
 
 **Client → Server:**
+
+Start Session:
 ```json
 {
   "type": "start_session",
   "payload": {
     "session_id": "session_123",
-    "mode": "practice",
-    "domain": "General"
+    "mode": "NDA",
+    "interview_mode": "NDA"
   }
 }
 ```
 
+Interim Transcript (Real-time):
 ```json
 {
-  "type": "transcript",
+  "type": "interim_transcript",
+  "payload": {
+    "text": "I has a",
+    "is_final": false
+  }
+}
+```
+
+Final Transcript:
+```json
+{
+  "type": "interim_transcript",
   "payload": {
     "text": "I has a book",
     "is_final": true
@@ -281,7 +369,42 @@ ws://localhost:8080/ws/practice?user_id=USER_ID&native_language=LANGUAGE
 }
 ```
 
+Thinking Pause:
+```json
+{
+  "type": "thinking_pause",
+  "payload": {
+    "pause_duration_ms": 3000
+  }
+}
+```
+
 **Server → Client:**
+
+Session Started:
+```json
+{
+  "type": "session_started",
+  "payload": {
+    "session_id": "session_123",
+    "opening_message": "Welcome, candidate. Let's begin..."
+  }
+}
+```
+
+Interim Update (Real-time):
+```json
+{
+  "type": "interim_update",
+  "payload": {
+    "text": "I has a",
+    "is_final": false,
+    "timestamp": 1707914827000
+  }
+}
+```
+
+Grammar Interruption:
 ```json
 {
   "type": "interruption",
@@ -290,10 +413,25 @@ ws://localhost:8080/ws/practice?user_id=USER_ID&native_language=LANGUAGE
       "original": "I has a book",
       "corrected": "I have a book",
       "error_type": "Subject-Verb Agreement",
-      "explanation_native": "'I' के साथ 'have' का उपयोग करें, 'has' नहीं"
+      "explanation_english": "Use 'have' with 'I', not 'has'",
+      "explanation_native": "'I' के साथ 'have' का उपयोग करें, 'has' नहीं",
+      "rule_id": "I_HAS",
+      "confidence": 0.95
     },
     "audio": "base64_audio_data",
-    "latency_ms": "< 300"
+    "latency_ms": "< 300",
+    "timestamp": 1707914827000
+  }
+}
+```
+
+Nudge (When user pauses too long):
+```json
+{
+  "type": "nudge",
+  "payload": {
+    "message": "Take your time. Continue when you're ready.",
+    "duration": 5000
   }
 }
 ```
@@ -303,6 +441,13 @@ ws://localhost:8080/ws/practice?user_id=USER_ID&native_language=LANGUAGE
 **Health Check:**
 ```
 GET /health
+Response:
+{
+  "status": "ok",
+  "active_clients": 5,
+  "deepgram_configured": true,
+  "openai_configured": true
+}
 ```
 
 **Grammar Check:**
@@ -311,6 +456,54 @@ POST /api/v1/check-grammar
 {
   "text": "I has a book",
   "native_language": "Hindi"
+}
+```
+
+**Get Interview Modes:**
+```
+GET /api/v1/interview-modes
+Response:
+{
+  "modes": [
+    {
+      "mode": "NDA",
+      "name": "Defence Services Interviewer",
+      "description": "Simulates National Defence Academy interview board",
+      "strictness": "Strict",
+      "focus_areas": ["Leadership qualities", "Current affairs", ...],
+      "patience_ms": 5000
+    },
+    ...
+  ]
+}
+```
+
+**Get Specific Interview Mode:**
+```
+GET /api/v1/interview-modes/NDA
+Response:
+{
+  "mode": "NDA",
+  "name": "Defence Services Interviewer",
+  "description": "Simulates National Defence Academy interview board",
+  ...
+}
+```
+
+**Session Summary:**
+```
+POST /api/v1/session/summary
+{
+  "session_id": "session_123"
+}
+Response:
+{
+  "session_id": "session_123",
+  "word_count": 250,
+  "error_count": 8,
+  "error_rate": 3.2,
+  "full_transcript": "...",
+  "errors_detected": ["I_HAS:I has", "THEY_IS:they is", ...]
 }
 ```
 
