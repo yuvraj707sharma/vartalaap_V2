@@ -91,7 +91,7 @@ func (ca *ChunkAnalyzer) AnalyzeChunk(sessionID, chunkText string, isFinal bool)
 	}
 
 	// Get the text to analyze (last 5-10 words from sliding window)
-	analyzeText := strings.Join(session.slidingWindow, " ")
+	_ = strings.Join(session.slidingWindow, " ") // Keep window updated for context
 	
 	// Also analyze the new chunk itself
 	if len(words) >= 2 {

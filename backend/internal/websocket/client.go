@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -320,7 +321,8 @@ func (c *Client) sendInterruption(errorResult *services.ErrorResult, originalTex
 		if err != nil {
 			log.Printf("Error generating TTS: %v", err)
 		} else {
-			audioResponse = audio
+			// Convert audio bytes to base64 string for transmission
+			audioResponse = base64.StdEncoding.EncodeToString(audio)
 		}
 	}
 
