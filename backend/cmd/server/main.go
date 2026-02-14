@@ -24,12 +24,15 @@ func main() {
 	llmRouter := services.NewLLMRouter()
 	grammarDetector := services.NewGrammarDetector(llmRouter)
 	deepgramService := services.NewDeepgramService()
+	chunkAnalyzer := services.NewChunkAnalyzer(grammarDetector)
+	interviewerService := services.NewInterviewerService()
+	openaiRealtimeService := services.NewOpenAIRealtimeService()
 
 	// Initialize WebSocket hub
 	hub := websocket.NewHub()
 	go hub.Run()
 
-	wsHandler := websocket.NewHandler(hub, grammarDetector, deepgramService)
+	wsHandler := websocket.NewHandler(hub, grammarDetector, deepgramService, chunkAnalyzer)
 
 	// Create Fiber app
 	app := fiber.New(fiber.Config{
@@ -46,8 +49,10 @@ func main() {
 	// Health check endpoint
 	app.Get("/health", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
-			"status":         "ok",
-			"active_clients": hub.GetClientCount(),
+			"status":           "ok",
+			"active_clients":   hub.GetClientCount(),
+			"deepgram_configured": deepgramService != nil,
+			"openai_configured":   openaiRealtimeService.IsConfigured(),
 		})
 	})
 
@@ -110,10 +115,54 @@ func main() {
 
 	// Interview modes endpoint
 	api.Get("/interview-modes", func(c *fiber.Ctx) error {
-		modes := []string{"Tech", "Finance", "UPSC", "SSC", "NDA", "CDS", "Business/MBA"}
+		personas := interviewerService.GetAllPersonas()
+		cards := make([]map[string]interface{}, 0, len(personas))
+		
+		for _, persona := range personas {
+			cards = append(cards, interviewerService.FormatPersonaCard(persona.Mode))
+		}
+		
 		return c.JSON(fiber.Map{
-			"modes": modes,
+			"modes": cards,
 		})
+	})
+
+	// Get specific interview mode details
+	api.Get("/interview-modes/:mode", func(c *fiber.Ctx) error {
+		mode := c.Params("mode")
+		
+		if !interviewerService.ValidateMode(mode) {
+			return c.Status(404).JSON(fiber.Map{
+				"error": "Invalid interview mode",
+			})
+		}
+		
+		card := interviewerService.FormatPersonaCard(mode)
+		return c.JSON(card)
+	})
+
+	// Session summary endpoint
+	api.Post("/session/summary", func(c *fiber.Ctx) error {
+		var request struct {
+			SessionID string `json:"session_id"`
+		}
+
+		if err := c.BodyParser(&request); err != nil {
+			return c.Status(400).JSON(fiber.Map{
+				"error": "Invalid request body",
+			})
+		}
+
+		if request.SessionID == "" {
+			return c.Status(400).JSON(fiber.Map{
+				"error": "session_id is required",
+			})
+		}
+
+		// Get session stats from chunk analyzer
+		stats := chunkAnalyzer.GetSessionStats(request.SessionID)
+		
+		return c.JSON(stats)
 	})
 
 	// Supported languages endpoint

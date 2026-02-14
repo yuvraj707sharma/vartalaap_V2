@@ -12,21 +12,23 @@ type Handler struct {
 	hub             *Hub
 	grammarDetector *services.GrammarDetector
 	deepgramService *services.DeepgramService
+	chunkAnalyzer   *services.ChunkAnalyzer
 }
 
 // NewHandler creates a new WebSocket handler
-func NewHandler(hub *Hub, grammarDetector *services.GrammarDetector, deepgramService *services.DeepgramService) *Handler {
+func NewHandler(hub *Hub, grammarDetector *services.GrammarDetector, deepgramService *services.DeepgramService, chunkAnalyzer *services.ChunkAnalyzer) *Handler {
 	return &Handler{
 		hub:             hub,
 		grammarDetector: grammarDetector,
 		deepgramService: deepgramService,
+		chunkAnalyzer:   chunkAnalyzer,
 	}
 }
 
 // ServeFiberWs handles Fiber WebSocket connections
 func (h *Handler) ServeFiberWs(conn *fiberws.Conn, userID string, nativeLanguage string) {
 	// Create new client with Fiber WebSocket connection
-	client := NewFiberClient(h.hub, conn, userID, nativeLanguage, h.grammarDetector, h.deepgramService)
+	client := NewFiberClient(h.hub, conn, userID, nativeLanguage, h.grammarDetector, h.deepgramService, h.chunkAnalyzer)
 	client.hub.register <- client
 
 	// Start client goroutines
