@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -42,10 +43,13 @@ type Client struct {
 	// Services
 	grammarDetector *services.GrammarDetector
 	deepgramService *services.DeepgramService
+	chunkAnalyzer   *services.ChunkAnalyzer
 
 	// Session state
 	currentTranscript string
 	errorCount        int
+	pauseStartTime    time.Time
+	isThinking        bool
 }
 
 // Message represents WebSocket messages
@@ -55,7 +59,7 @@ type Message struct {
 }
 
 // NewFiberClient creates a new Client instance with Fiber WebSocket
-func NewFiberClient(hub *Hub, conn *fiberws.Conn, userID string, nativeLanguage string, grammarDetector *services.GrammarDetector, deepgramService *services.DeepgramService) *Client {
+func NewFiberClient(hub *Hub, conn *fiberws.Conn, userID string, nativeLanguage string, grammarDetector *services.GrammarDetector, deepgramService *services.DeepgramService, chunkAnalyzer *services.ChunkAnalyzer) *Client {
 	return &Client{
 		hub:             hub,
 		conn:            conn,
@@ -64,7 +68,9 @@ func NewFiberClient(hub *Hub, conn *fiberws.Conn, userID string, nativeLanguage 
 		nativeLanguage:  nativeLanguage,
 		grammarDetector: grammarDetector,
 		deepgramService: deepgramService,
+		chunkAnalyzer:   chunkAnalyzer,
 		errorCount:      0,
+		isThinking:      false,
 	}
 }
 
@@ -136,10 +142,14 @@ func (c *Client) processMessage(data []byte) {
 		c.handleAudioMessage(msg.Payload)
 	case "transcript":
 		c.handleTranscriptMessage(msg.Payload)
+	case "interim_transcript":
+		c.handleInterimTranscript(msg.Payload)
 	case "start_session":
 		c.handleStartSession(msg.Payload)
 	case "end_session":
 		c.handleEndSession(msg.Payload)
+	case "thinking_pause":
+		c.handleThinkingPause(msg.Payload)
 	default:
 		log.Printf("Unknown message type: %s", msg.Type)
 	}
@@ -232,6 +242,112 @@ func (c *Client) handleEndSession(payload map[string]interface{}) {
 	c.sessionID = ""
 	c.errorCount = 0
 	c.currentTranscript = ""
+}
+
+// handleInterimTranscript processes interim (non-final) transcript chunks for real-time analysis
+func (c *Client) handleInterimTranscript(payload map[string]interface{}) {
+	transcript, ok := payload["text"].(string)
+	if !ok || transcript == "" {
+		return
+	}
+
+	isFinal, _ := payload["is_final"].(bool)
+
+	// Use chunk analyzer for real-time detection
+	if c.chunkAnalyzer != nil {
+		chunkError, err := c.chunkAnalyzer.AnalyzeChunk(c.sessionID, transcript, isFinal)
+		if err != nil {
+			log.Printf("Error analyzing chunk: %v", err)
+			return
+		}
+
+		// If error detected and it's a new error, send interruption
+		if chunkError != nil && chunkError.IsNewError {
+			c.sendInterruption(chunkError.ErrorResult, transcript)
+		}
+	}
+
+	// Send interim transcript update to client for UI display
+	if !isFinal {
+		response := Message{
+			Type: "interim_update",
+			Payload: map[string]interface{}{
+				"text":      transcript,
+				"is_final":  false,
+				"timestamp": time.Now().UnixMilli(),
+			},
+		}
+		responseData, _ := json.Marshal(response)
+		c.send <- responseData
+	} else {
+		// For final transcripts, also update the current transcript
+		c.currentTranscript = transcript
+	}
+}
+
+// handleThinkingPause handles when user pauses (to distinguish thinking vs done speaking)
+func (c *Client) handleThinkingPause(payload map[string]interface{}) {
+	pauseDuration, ok := payload["pause_duration_ms"].(float64)
+	if !ok {
+		return
+	}
+
+	// Mark user as thinking
+	c.isThinking = true
+	c.pauseStartTime = time.Now()
+
+	// If pause is very long (> 5 seconds), send a gentle nudge
+	if pauseDuration > 5000 {
+		response := Message{
+			Type: "nudge",
+			Payload: map[string]interface{}{
+				"message":  "Take your time. Continue when you're ready.",
+				"duration": pauseDuration,
+			},
+		}
+		responseData, _ := json.Marshal(response)
+		c.send <- responseData
+	}
+}
+
+// sendInterruption sends a grammar error interruption to the client
+func (c *Client) sendInterruption(errorResult *services.ErrorResult, originalText string) {
+	c.errorCount++
+
+	// Generate audio response for the native language explanation
+	var audioResponse string
+	if c.deepgramService != nil {
+		audio, err := c.deepgramService.TextToSpeech(errorResult.ExplanationNative)
+		if err != nil {
+			log.Printf("Error generating TTS: %v", err)
+		} else {
+			// Convert audio bytes to base64 string for transmission
+			audioResponse = base64.StdEncoding.EncodeToString(audio)
+		}
+	}
+
+	// Send interruption message
+	response := Message{
+		Type: "interruption",
+		Payload: map[string]interface{}{
+			"error": map[string]interface{}{
+				"original":            errorResult.Original,
+				"corrected":           errorResult.Corrected,
+				"error_type":          errorResult.ErrorType,
+				"explanation_english": errorResult.ExplanationEnglish,
+				"explanation_native":  errorResult.ExplanationNative,
+				"rule_id":             errorResult.RuleID,
+				"confidence":          errorResult.Confidence,
+			},
+			"audio":       audioResponse,
+			"timestamp":   time.Now().UnixMilli(),
+			"latency_ms":  "< 300",
+			"text":        originalText,
+		},
+	}
+
+	responseData, _ := json.Marshal(response)
+	c.send <- responseData
 }
 
 // SendMessage sends a message to the client

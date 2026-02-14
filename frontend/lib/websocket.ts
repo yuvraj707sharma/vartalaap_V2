@@ -71,6 +71,14 @@ export class WebSocketClient {
     }
   }
 
+  sendBinary(data: ArrayBuffer | Blob) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(data)
+    } else {
+      console.error('WebSocket is not connected')
+    }
+  }
+
   onMessage(callback: (data: any) => void) {
     this.onMessageCallback = callback
   }

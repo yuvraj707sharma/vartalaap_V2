@@ -59,6 +59,16 @@ export function useVoiceSession() {
         
         setTimeout(() => setIsSpeaking(false), 3000)
         break
+      
+      case 'interim_update':
+        // Handle real-time transcript updates (don't add to messages, just for UI display)
+        // Frontend can use this to show live transcription
+        break
+        
+      case 'nudge':
+        // Handle nudge messages when user pauses too long
+        addMessage('system', data.payload.message, {})
+        break
         
       case 'session_ended':
         addMessage('system', `Session ended. Total errors: ${data.payload.error_count}`, {})
@@ -157,16 +167,17 @@ export function useVoiceSession() {
       
       const isFinal = event.results[event.results.length - 1].isFinal
       
+      // Send BOTH interim and final transcripts to backend for real-time analysis
+      if (wsClient.current) {
+        wsClient.current.send('interim_transcript', {
+          text: transcript,
+          is_final: isFinal,
+        })
+      }
+      
+      // Only add to messages when final
       if (isFinal) {
         addMessage('user', transcript, {})
-        
-        // Send transcript to backend for grammar check
-        if (wsClient.current) {
-          wsClient.current.send('transcript', {
-            text: transcript,
-            is_final: isFinal,
-          })
-        }
       }
     }
     
